@@ -1,0 +1,283 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## Setup
+```{r, warning=FALSE, error=FALSE}
+rm(list = ls())
+
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+library(glue)
+library(RIdeogram)
+library(openxlsx)
+library(latex2exp)
+library(cowplot)
+library(magick)
+
+theme_set(theme_solarized_2())
+
+ensure.output <- function(directory) {
+  output_dir <- "output"
+  output_sub_dir <- "{output_dir}/{directory}" |> glue()
+  output_sub_dir |> dir.create(showWarnings = FALSE, recursive = TRUE)
+  output_sub_dir
+}
+```
+
+## CQ
+
+### Load datasets
+```{r}
+read.single_alignment <- function(file) {
+  url_prefix <- "http://imlspenticton.uzh.ch/dump/ece/gDNA/CQ/Depths"
+  "{url_prefix}/{file}" |>
+    glue() |>
+    read_tsv(show_col_types = FALSE) |>
+    rename(c(
+      "contig" = "#rname",
+      "length" = "endpos",
+      "depth" = "meandepth")) |>
+    select(contig, length, coverage, depth)
+}
+
+read.alignment <- function(file.female, file.male) {
+  alignment.female <- read.single_alignment(file.female)
+  alignment.male <- read.single_alignment(file.male)
+  
+  alignment.male |>
+    left_join(
+      alignment.male, 
+      by = c("contig", "length"),
+      suffix = c(".female", ".male")) |>
+    mutate(cq = depth.female / depth.male)
+}
+
+m1.alignment <- read.alignment(
+  file.female = "contigScale/MIaabys_female_on_MIcontigs_depth_perContig.txt",
+  file.male = "contigScale/MIaabys_male_on_MIcontigs_depth_perContig.txt") |>
+  filter(depth.male >= 1.0) 
+
+"M1:" |> print()
+m1.alignment |> summary() 
+
+
+control.alignment <- read.alignment(
+  file.female = "controlGenes/MIaabys_female_on_controls.txt",
+  file.male = "controlGenes/MIaabys_male_on_controls.txt")
+
+"Control:" |> print()
+control.alignment |> summary() 
+```
+### Normalize them
+```{r}
+m1.alignment <- m1.alignment |>
+  mutate(cq.norm = cq / mean(control.alignment$cq))
+
+m1.alignment$cq.norm |> summary()
+```
+
+### Load synteny
+```{r}
+synteny <- read.xlsx("http://imlspenticton.uzh.ch/dump/ece/cDNA/MachineLearning/PredictedData/MI_contigs_predicted.xlsx", sheet = 1) |>
+  select(contig, allocation)
+m1.alignment <- m1.alignment |>
+  left_join(synteny, by = "contig")
+```
+
+
+### Plot
+```{r}
+cutoff <- 0.2
+
+plot.cq <- function(data, cutoff, title) {
+  cutoff.count <- data |>
+    filter(cq.norm <= cutoff) |>
+    nrow()
+
+  data |>
+  ggplot(aes(x = log(length), y = log(cq.norm))) +
+  labs(
+    title = title,
+    x = "ln length",
+    y = "ln CQ") +
+  geom_point() +
+  annotate(
+    "text", 
+    x = 15, 
+    y = -3.5, 
+    label = glue("{cutoff.count} contigs seem to be under the cutoff CQ <= {cutoff}")) +
+  geom_hline(yintercept = log(cutoff), color = "salmon")
+}
+
+m1.alignment |> plot.cq(cutoff, "CQ, all contigs")
+m1.alignment |>
+  filter(allocation == "2L") |> 
+  plot.cq(cutoff, "CQ, contigs mapping to 2L")
+```
+
+### Save data
+```{r}
+output_dir <- ensure.output("cq")
+
+m1.alignment |>
+  write_tsv("{output_dir}/cq_with_synteny.tsv" |> glue())
+```
+
+## Karyotype
+
+### Load Synteny
+```{r ProtoX search}
+read.synteny <- function(file) {
+  url_prefix <- "http://imlspenticton.uzh.ch/dump/ece/cDNA/BUSCO/OrthoMCL/SynthenyMaps"
+  "{url_prefix}/{file}" |>
+    glue() |>
+    read_tsv(show_col_types = FALSE)
+}
+
+synteny.dmel_to_m5 <- read.synteny("Dmel_vs_MV/Dmel_MV_sinteny.txt")
+
+bugz <- "tig00000533"
+bugz.orthologs <- synteny.dmel_to_m5 |>
+  filter(Species2 == bugz) |>
+  select(Ortho) |>
+  unique() |>
+  unlist()       
+
+synteny.dmel_to_m1 <- read.synteny("Dmel_vs_MI/Dmel_MI_sinteny.txt") |>
+  filter(Ortho %in% bugz.orthologs)
+
+synteny.dmel_to_m1 <- synteny.dmel_to_m1 |>
+  count(Ortho) |>
+  rename(c("Freq" = "n")) |>
+  left_join(synteny.dmel_to_m1, by = "Ortho") |>
+  filter(Freq <= 4)
+
+synteny.dmel_to_m1 |> 
+  count(Species2) |>
+  arrange(n |> desc())
+```
+
+### Build Orthology of MI to MV
+```{r}
+# These have a good amount of distincly mapped genes
+contigs_of_interest <- c(
+  "tig00003344", 
+  "tig00003381", 
+  "tig00009311", 
+  "tig00009367",
+  "tig00009613",
+  "tig00009652",
+  "tig00009658", 
+  "tig00009705", 
+  "tig00009706", 
+  "tig00009708", 
+  "tig00009710")
+
+synteny.dmel_to_m1 <- synteny.dmel_to_m1 |>
+  filter(Species2 %in% contigs_of_interest)    
+
+synteny.bugz_dmel_to_m5 <- synteny.dmel_to_m5 |>
+  filter(Species2 == bugz) |>
+  select(Ortho, Species2, Start2, End2) |>  
+  rename(c(
+    "Species1" = "Species2",
+    "Start1" = "Start2",
+    "End1" = "End2"
+  )) 
+
+synteny.bugz_m1_to_m5 <- synteny.dmel_to_m1 |>
+  select(Ortho, Species2, Start2, End2) |>
+  left_join(synteny.bugz_dmel_to_m5, by = "Ortho") |>
+  select(Species1, Start1, End1, Species2, Start2, End2)
+```
+
+
+### Compute Karyotype
+```{r}
+# The rest are at the end; that's ok
+order_of_significance <- c(
+  'tig00003381', 
+  'tig00003344',
+  'tig00009652', 
+  'tig00009658',
+  'tig00009706', 
+  'tig00009705',
+  'tig00009367', 
+  'tig00009311')
+
+alignment.m1_male <- read.single_alignment("contigScale/MIaabys_male_on_MIcontigs_depth_perContig.txt") |>
+  select(contig, coverage, length) |>
+  filter(contig %in% synteny.dmel_to_m1$Species2) |>
+  arrange(factor(contig, levels = order_of_significance))
+
+n <- 1 + synteny.dmel_to_m1$Species2 |>
+  unique() |>
+  length()
+
+m5_contig_length <- 17343608
+karyotype <- tibble(
+  Chr = c(bugz, alignment.m1_male$contig),
+  Start = replicate(n, 1) |> as.numeric(),
+  End =  c(m5_contig_length, alignment.m1_male$length),
+  fill =  c("95FF7D", replicate(n - 1, "8AFFBB")),
+  species = c("ProtoX", replicate(n - 1 , "ProtoY")),
+  size = replicate(n, 12),
+  color = replicate(n, 25252))
+```
+
+```{r}
+contig_head <- karyotype |>
+  select(Chr) |>
+  slice(1) |>
+  unlist()
+contig_tail <- karyotype |>
+  select(Chr) |>
+  slice(-1) |>
+  unlist()
+
+get_rank <- function(to_rank, ranks) {
+  for (i in ranks |> seq_along()) {
+    contig <- ranks[[i]]
+    to_rank <- replace(to_rank, to_rank == contig, i)
+  }
+  to_rank |> as.integer()
+}
+
+synteny.bugz_m1_to_m5$Species1 <- synteny.bugz_m1_to_m5$Species1 |>
+  get_rank(contig_head)
+synteny.bugz_m1_to_m5$Species2 <- synteny.bugz_m1_to_m5$Species2 |>
+  get_rank(contig_tail)
+```
+
+
+### Create And Save Ideogram
+
+```{r ideogram}
+
+output_dir <- "karyotype" |> ensure.output()
+ideogram_path <- "{output_dir}/ideogram" |> glue()
+
+synteny.bugz_m1_to_m5 <- synteny.bugz_m1_to_m5 |>
+  mutate(fill = "FF6E63")
+
+ideogram(
+  karyotype = karyotype,
+  synteny = synteny.bugz_m1_to_m5 |> as.data.frame(),
+  output = "{ideogram_path}.svg" |> glue())
+
+convertSVG(
+  "{ideogram_path}.svg" |> glue(),
+  device = "png", 
+  file = "{ideogram_path}.png" |> glue(), 
+  dpi = 500)
+```
+
+### Plot Ideogram
+
+```{r}
+ggdraw() +
+  draw_image("{ideogram_path}.png" |> glue())
+```
