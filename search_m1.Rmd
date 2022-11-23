@@ -4,6 +4,7 @@ output: html_notebook
 ---
 
 ## Setup
+
 ```{r, warning=FALSE, error=FALSE}
 rm(list = ls())
 
@@ -17,7 +18,8 @@ library(latex2exp)
 library(cowplot)
 library(magick)
 
-theme_set(theme_solarized_2())
+theme_solarized_2() |>
+  theme_set()
 
 ensure.output <- function(directory) {
   output_dir <- "output"
@@ -30,6 +32,7 @@ ensure.output <- function(directory) {
 ## CQ
 
 ### Load datasets
+
 ```{r}
 read.single_alignment <- function(file) {
   url_prefix <- "http://imlspenticton.uzh.ch/dump/ece/gDNA/CQ/Depths"
@@ -71,7 +74,9 @@ control.alignment <- read.alignment(
 "Control:" |> print()
 control.alignment |> summary() 
 ```
+
 ### Normalize them
+
 ```{r}
 m1.alignment <- m1.alignment |>
   mutate(cq.norm = cq / mean(control.alignment$cq))
@@ -80,6 +85,7 @@ m1.alignment$cq.norm |> summary()
 ```
 
 ### Load synteny
+
 ```{r}
 synteny <- read.xlsx("http://imlspenticton.uzh.ch/dump/ece/cDNA/MachineLearning/PredictedData/MI_contigs_predicted.xlsx", sheet = 1) |>
   select(contig, allocation)
@@ -87,8 +93,8 @@ m1.alignment <- m1.alignment |>
   left_join(synteny, by = "contig")
 ```
 
-
 ### Plot
+
 ```{r}
 cutoff <- 0.2
 
@@ -97,7 +103,7 @@ plot.cq <- function(data, cutoff, title) {
     filter(cq.norm <= cutoff) |>
     nrow()
 
-  data |>
+data |>
   ggplot(aes(x = log(length), y = log(cq.norm))) +
   labs(
     title = title,
@@ -119,6 +125,7 @@ m1.alignment |>
 ```
 
 ### Save data
+
 ```{r}
 output_dir <- ensure.output("cq")
 
@@ -129,6 +136,7 @@ m1.alignment |>
 ## Karyotype
 
 ### Load Synteny
+
 ```{r ProtoX search}
 read.synteny <- function(file) {
   url_prefix <- "http://imlspenticton.uzh.ch/dump/ece/cDNA/BUSCO/OrthoMCL/SynthenyMaps"
@@ -161,6 +169,7 @@ synteny.dmel_to_m1 |>
 ```
 
 ### Build Orthology of MI to MV
+
 ```{r}
 # These have a good amount of distincly mapped genes
 contigs_of_interest <- c(
@@ -194,8 +203,8 @@ synteny.bugz_m1_to_m5 <- synteny.dmel_to_m1 |>
   select(Species1, Start1, End1, Species2, Start2, End2)
 ```
 
-
 ### Compute Karyotype
+
 ```{r}
 # The rest are at the end; that's ok
 order_of_significance <- c(
@@ -251,7 +260,6 @@ synteny.bugz_m1_to_m5$Species1 <- synteny.bugz_m1_to_m5$Species1 |>
 synteny.bugz_m1_to_m5$Species2 <- synteny.bugz_m1_to_m5$Species2 |>
   get_rank(contig_tail)
 ```
-
 
 ### Create And Save Ideogram
 
