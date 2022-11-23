@@ -120,7 +120,7 @@ plot.cq <- function(data, cutoff, title) {
 
 m1.alignment |> plot.cq(cutoff, "CQ, all contigs")
 m1.alignment |>
-  filter(allocation == "2L") |> 
+  filter(allocation == "2L" | allocation = "NALL") |> 
   plot.cq(cutoff, "CQ, contigs mapping to 2L")
 ```
 
