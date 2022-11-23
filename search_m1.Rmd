@@ -50,7 +50,7 @@ read.alignment <- function(file.female, file.male) {
   alignment.female <- read.single_alignment(file.female)
   alignment.male <- read.single_alignment(file.male)
   
-  alignment.male |>
+  alignment.female |>
     left_join(
       alignment.male, 
       by = c("contig", "length"),
@@ -103,19 +103,19 @@ plot.cq <- function(data, cutoff, title) {
     filter(cq.norm <= cutoff) |>
     nrow()
 
-data |>
-  ggplot(aes(x = log(length), y = log(cq.norm))) +
-  labs(
-    title = title,
-    x = "ln length",
-    y = "ln CQ") +
-  geom_point() +
-  annotate(
-    "text", 
-    x = 15, 
-    y = -3.5, 
-    label = glue("{cutoff.count} contigs seem to be under the cutoff CQ <= {cutoff}")) +
-  geom_hline(yintercept = log(cutoff), color = "salmon")
+  data |>
+    ggplot(aes(x = log(length), y = log(cq.norm))) +
+    labs(
+      title = title,
+      x = "ln length",
+      y = "ln CQ") +
+    geom_point() +
+    annotate(
+      "text", 
+      x = 15, 
+      y = -3.5, 
+      label = glue("{cutoff.count} contigs seem to be under the cutoff CQ <= {cutoff}")) +
+    geom_hline(yintercept = log(cutoff), color = "salmon")
 }
 
 m1.alignment |> plot.cq(cutoff, "CQ, all contigs")
