@@ -237,6 +237,13 @@ alignment.m1_male.cq <- m1.alignment |>
 # join
 alignment.m1_male <- left_join(alignment.m1_male, alignment.m1_male.cq, by = "contig")
 
+# group them manually
+group <- c(1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 5)
+alignment.m1_male <- alignment.m1_male |>
+  mutate(group = group)
+
+
+
 
 n <- 1 + synteny.dmel_to_m1$Species2 |>
   unique() |>
