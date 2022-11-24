@@ -229,6 +229,15 @@ alignment.m1_male <- read.single_alignment("contigScale/MIaabys_male_on_MIcontig
   filter(contig %in% synteny.dmel_to_m1$Species2) |>
   arrange(factor(contig, levels = order_of_significance))
 
+# find cq of contigs in alignment m1 male
+alignment.m1_male.cq <- m1.alignment |>
+  select(contig, cq.norm) |>
+  filter(contig %in% alignment.m1_male$contig)
+
+# join
+alignment.m1_male <- left_join(alignment.m1_male, alignment.m1_male.cq, by = "contig")
+
+
 n <- 1 + synteny.dmel_to_m1$Species2 |>
   unique() |>
   length()
