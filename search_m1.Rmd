@@ -118,10 +118,11 @@ plot.cq <- function(data, cutoff, title) {
     geom_hline(yintercept = log(cutoff), color = "salmon")
 }
 
+chromosomes <- c("2L", "NALL")
 m1.alignment |> plot.cq(cutoff, "CQ, all contigs")
 m1.alignment |>
-  filter(allocation == "2L" | allocation == "NALL") |> 
-  plot.cq(cutoff, "CQ, contigs mapping to 2L")
+  filter(allocation %in% chromosomes) |> 
+  plot.cq(cutoff, "CQ, contigs mapping to {glue_collapse(chromosomes, sep = ', ')}" |> glue())
 ```
 
 ### Save data
