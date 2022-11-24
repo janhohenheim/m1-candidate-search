@@ -242,6 +242,10 @@ group <- c(1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 5)
 alignment.m1_male <- alignment.m1_male |>
   mutate(group = group)
 
+# assign ProtoX or ProtoY
+karyotype <- c("ProtoY","ProtoX","ProtoY","ProtoX","ProtoX","ProtoX","ProtoY","ProtoX","ProtoY","ProtoX","ProtoX")
+alignment.m1_male <- alignment.m1_male |>
+  mutate(karyotype = karyotype)
 
 
 
