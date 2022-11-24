@@ -204,6 +204,12 @@ synteny.bugz_m1_to_m5 <- synteny.dmel_to_m1 |>
   select(Species1, Start1, End1, Species2, Start2, End2)
 ```
 
+### Read Candidates
+```{r}
+candidates <- read_csv("data/candidates.csv") |>
+  mutate(STATUS = STATUS |> factor())
+```
+
 ### Compute Karyotype
 
 ```{r}
