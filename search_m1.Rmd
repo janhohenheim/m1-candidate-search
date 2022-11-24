@@ -209,21 +209,40 @@ synteny.bugz_m1_to_m5 <- synteny.dmel_to_m1 |>
 ```{r}
 # The rest are at the end; that's ok
 order_of_significance <- c(
-  'tig00003381', 
+  'tig00003381',
   'tig00003344',
-  'tig00009652', 
+  'tig00009652',
   'tig00009658',
-  'tig00009706', 
+  'tig00009706',
   'tig00009705',
-  'tig00009367', 
+  'tig00009367',
   'tig00009311')
 
-alignment.m1_male <- read.single_alignment("contigScale/MIaabys_male_on_MIcontigs_depth_perContig.txt") |>
-  select(contig, coverage, length) |>
-  filter(contig %in% synteny.dmel_to_m1$Species2) |>
-  arrange(factor(contig, levels = order_of_significance))
 
-n <- 1 + synteny.dmel_to_m1$Species2 |>
+alignment.m1_male <- read.single_alignment("contigScale/MIaabys_male_on_MIcontigs_depth_perContig.txt")|>
+  select(contig, coverage, length) |> #drops variable depth
+  filter(contig %in% synteny.dmel_to_m1$Species2) |> # reduces to the 11 that map to m1 on dmel
+  arrange(factor(contig, levels = order_of_significance)) # order by Eces order of significance 
+
+
+
+# find out which contigs overlap
+# add start and end on contig 533 --> from bugz m1 to m5 --> does not work, multiple 
+contigs.start.end <- synteny.bugz_m1_to_m5 |>
+  select(Start1, End1, Species2) |>
+  filter(Species2 %in% contigs_of_interest) |>
+  group_by(Species2) |>
+  summarise(Start1 = min(Start1), End1 = max(End1))
+
+
+# add CQ of these and compare
+
+# assign high CQ to Proto X, low CQ to Proto Y
+
+
+
+# counts unique contigs on species2 + 1 for contig 533
+n <- 1 +   synteny.dmel_to_m1$Species2 |>
   unique() |>
   length()
 
