@@ -208,7 +208,7 @@ synteny.bugz_m1_to_m5 <- synteny.dmel_to_m1 |>
 
 ```{r}
 # The rest are at the end; that's ok
-order_of_significance <- c(
+order_on_synteny <- c(
   'tig00003381', 
   'tig00003344',
   'tig00009652', 
@@ -216,12 +216,13 @@ order_of_significance <- c(
   'tig00009706', 
   'tig00009705',
   'tig00009367', 
-  'tig00009311')
+  'tig00009311', 
+  'tig00009710')
 
 alignment.m1_male <- read.single_alignment("contigScale/MIaabys_male_on_MIcontigs_depth_perContig.txt") |>
   select(contig, coverage, length) |>
   filter(contig %in% synteny.dmel_to_m1$Species2) |>
-  arrange(factor(contig, levels = order_of_significance))
+  arrange(factor(contig, levels = order_on_synteny))
 
 n <- 1 + synteny.dmel_to_m1$Species2 |>
   unique() |>
@@ -239,15 +240,69 @@ karyotype <- tibble(
 ```
 
 ```{r}
-contig_head <- karyotype |>
-  select(Chr) |>
-  slice(1) |>
-  unlist()
-contig_tail <- karyotype |>
-  select(Chr) |>
-  slice(-1) |>
-  unlist()
+synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5 |>
+  left_join(m1.alignment |> select(contig, cq.norm), by = c(
+    "Species2" = "contig"
+  )) |>
+  mutate(chromosome = if_else(cq.norm < 0.4, "Y", "X")) |>
+  select(-cq.norm)
 
+candidates <- read_csv("candidates.csv") |>
+  mutate(STATUS = STATUS |> as.factor(),
+         `contig allocation` = `contig allocation` |> as.factor()) |>
+  filter(STATUS != "not in all males") |>
+  select(contig = tname)
+
+synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
+  mutate(chromosome = if_else(Species2 %in% candidates$contig, "Y", chromosome))
+
+manual_x <- c(
+  "tig00003344",
+  "tig00009705",
+  "tig00009613"
+)
+manual_y <- c(
+  "tig00009652"
+)
+
+synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
+  mutate(chromosome = if_else(Species2 %in% manual_x, "X", chromosome)) |> 
+  mutate(chromosome = if_else(Species2 %in% manual_y, "Y", chromosome))
+
+```
+
+
+```{r}
+to_flip <- c(
+  # X
+  "tig00003344",
+  "tig00009658",
+  "tig00009706",
+  "tig00009705",
+  "tig00009613",
+  "tig00009708",
+  # Y
+  "tig00009652",
+  "tig00009710"
+)
+synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
+  left_join(m1.alignment |> select(contig, length), by = c(
+    "Species2" = "contig"
+  )) |>
+  mutate(Start2.new = if_else(Species2 %in% to_flip, length - End2 , Start2),
+         End2.new = if_else(Species2 %in% to_flip, length - Start2 , End2)) |>
+  mutate(Start2 = Start2.new,
+         End2 = End2.new) |>
+  select(-length,
+         -Start2.new,
+         -End2.new)
+```
+
+
+### Create And Save Ideogram
+
+
+```{r}
 get_rank <- function(to_rank, ranks) {
   for (i in ranks |> seq_along()) {
     contig <- ranks[[i]]
@@ -256,37 +311,96 @@ get_rank <- function(to_rank, ranks) {
   to_rank |> as.integer()
 }
 
-synteny.bugz_m1_to_m5$Species1 <- synteny.bugz_m1_to_m5$Species1 |>
-  get_rank(contig_head)
-synteny.bugz_m1_to_m5$Species2 <- synteny.bugz_m1_to_m5$Species2 |>
-  get_rank(contig_tail)
+get_filtered_ideogram_data <- function(synteny) {
+  karyotype.filtered <- karyotype |> 
+    filter(species == "ProtoX") |>
+    rbind(karyotype |>
+            filter(Chr %in% synteny$Species2))
+  
+  contig_head <- karyotype.filtered |>
+    select(Chr) |>
+    slice(1) |>
+    unlist()
+  contig_tail <- karyotype.filtered |>
+    select(Chr) |>
+    slice(-1) |>
+    unlist()
+  synteny.filtered <- synteny
+  synteny.filtered$Species1 <- synteny$Species1 |>
+    get_rank(contig_head)
+  synteny.filtered$Species2 <- synteny$Species2 |>
+    get_rank(contig_tail)
+  list(
+    karyotype = karyotype.filtered,
+    synteny = synteny.filtered
+  )
+}
 ```
-
-### Create And Save Ideogram
 
 ```{r ideogram}
 
 output_dir <- "karyotype" |> ensure.output()
-ideogram_path <- "{output_dir}/ideogram" |> glue()
 
-synteny.bugz_m1_to_m5 <- synteny.bugz_m1_to_m5 |>
+synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
   mutate(fill = "FF6E63")
 
-ideogram(
-  karyotype = karyotype,
-  synteny = synteny.bugz_m1_to_m5 |> as.data.frame(),
-  output = "{ideogram_path}.svg" |> glue())
+create_ideogram <- function(chrom) {
+  ideogram_path <- "{output_dir}/ideogram_{chrom}" |> glue()
+  data <- synteny.bugz_m1_to_m5.filtered |> 
+    filter(chromosome == chrom) |> 
+    select(-chromosome) |>
+    get_filtered_ideogram_data()
+  
+  ideogram(
+    karyotype = data$karyotype,
+    synteny = data$synteny |> as.data.frame(),
+    output = "{ideogram_path}.svg" |> glue())
 
-convertSVG(
-  "{ideogram_path}.svg" |> glue(),
-  device = "png", 
-  file = "{ideogram_path}.png" |> glue(), 
-  dpi = 500)
+  convertSVG(
+    "{ideogram_path}.svg" |> glue(),
+    device = "png", 
+    file = "{ideogram_path}.png" |> glue(), 
+    dpi = 500)
+  
+  ggdraw() +
+    draw_image("{ideogram_path}.png" |> glue())
+}
+create_ideogram("X")
+create_ideogram("Y")
 ```
 
-### Plot Ideogram
+
+### Desk
 
 ```{r}
-ggdraw() +
-  draw_image("{ideogram_path}.png" |> glue())
+karyotype2 <- karyotype |> 
+  filter(Chr %in% contigs_of_interest) |>
+  left_join(m1.alignment |> select(contig, cq.norm), by = c(
+    "Chr" = "contig"
+  )) |>
+  filter(cq.norm < 0.5) |>
+  select(-cq.norm)
+  #rbind(karyotype |> filter(species == "ProtoX"))
+
+karyotype2
+```
+
+```{r}
+to_check = c(
+  # Y
+  "tig00003381",
+  "tig00003344", # -> X
+  "tig00009705", # -> X
+  "tig00009367", # SAM
+  "tig00009710", # 
+  "tig00009613", # -> X because of candidate list
+  # X
+  "tig00009652", # -> Y
+  "tig00009658"
+  #"tig00009311"
+)
+
+m1.alignment |>
+  filter(contig %in% to_check) |>
+  select(contig, cq.norm)
 ```
