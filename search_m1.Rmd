@@ -17,6 +17,7 @@ library(openxlsx)
 library(latex2exp)
 library(cowplot)
 library(magick)
+library(purrr)
 
 theme_solarized_2() |>
   theme_set()
@@ -172,7 +173,7 @@ synteny.dmel_to_m1 |>
 ### Build Orthology of MI to MV
 
 ```{r}
-# These have a good amount of distincly mapped genes
+# These have a good amount of distinctly mapped genes
 contigs_of_interest <- c(
   "tig00003344", 
   "tig00003381", 
@@ -204,6 +205,19 @@ synteny.bugz_m1_to_m5 <- synteny.dmel_to_m1 |>
   select(Species1, Start1, End1, Species2, Start2, End2)
 ```
 
+### Split by CQ
+```{r}
+synteny.bugz_m1_to_m5 |>
+  distinct() |>
+  group_nest(Start1, End1, Species1) |>
+  mutate(data = data |> purrr::map(
+    \(dat) dat |> 
+      group_nest(Species2))) |>
+  mutate(ortholog_count = data |> purrr::map_dbl(nrow)) |>
+  arrange(ortholog_count |> desc())
+```
+
+
 ### Read Candidates
 ```{r}
 candidates <- read_csv("data/candidates.csv") |>
@@ -229,17 +243,28 @@ alignment.m1_male <- read.single_alignment("contigScale/MIaabys_male_on_MIcontig
   filter(contig %in% synteny.dmel_to_m1$Species2) |>
   arrange(factor(contig, levels = order_of_significance))
 
-n <- 1 + synteny.dmel_to_m1$Species2 |>
-  unique() |>
-  length()
+karyotype.template <- synteny.bugz_m1_to_m5 |>
+  distinct() |>
+  left_join(m1.alignment, by = c(
+    "Species2" = "contig"
+  )) |>
+  select(Start1, End1, Species1, Species2, Start2, End2, cq.norm) |>
+  mutate(chrom = if_else(cq.norm < 0.5, "ProtoY", "ProtoX")) |>
+  left_join(alignment.m1_male, by = c("Species2" = "contig")) |>
+  filter(chrom == "Y")
+```
+
+```{r}
+n <- 1 + karyotype.template |>
+  nrow()
 
 m5_contig_length <- 17343608
 karyotype <- tibble(
-  Chr = c(bugz, alignment.m1_male$contig),
+  Chr = c(bugz, karyotype.template$Species2),
   Start = replicate(n, 1) |> as.numeric(),
-  End =  c(m5_contig_length, alignment.m1_male$length),
+  End =  c(m5_contig_length, karyotype.template$length),
   fill =  c("95FF7D", replicate(n - 1, "8AFFBB")),
-  species = c("ProtoX", replicate(n - 1 , "ProtoY")),
+  species = c("ProtoX", karyotype.template$chrom),
   size = replicate(n, 12),
   color = replicate(n, 25252))
 ```
@@ -262,25 +287,29 @@ get_rank <- function(to_rank, ranks) {
   to_rank |> as.integer()
 }
 
-synteny.bugz_m1_to_m5$Species1 <- synteny.bugz_m1_to_m5$Species1 |>
+karyotype.template$Species1 <- karyotype.template$Species1 |>
   get_rank(contig_head)
-synteny.bugz_m1_to_m5$Species2 <- synteny.bugz_m1_to_m5$Species2 |>
+karyotype.template$Species2 <- karyotype.template$Species2 |>
   get_rank(contig_tail)
 ```
 
 ### Create And Save Ideogram
 
 ```{r ideogram}
-
 output_dir <- "karyotype" |> ensure.output()
 ideogram_path <- "{output_dir}/ideogram" |> glue()
 
-synteny.bugz_m1_to_m5 <- synteny.bugz_m1_to_m5 |>
+karyotype.template <- karyotype.template |>
   mutate(fill = "FF6E63")
+```
 
+```{r}
 ideogram(
   karyotype = karyotype,
-  synteny = synteny.bugz_m1_to_m5 |> as.data.frame(),
+  synteny = karyotype.template |> 
+    select(-cq.norm) |> 
+    select(-chrom) |> 
+    as.data.frame(),
   output = "{ideogram_path}.svg" |> glue())
 
 convertSVG(
