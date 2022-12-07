@@ -373,8 +373,8 @@ create_ideogram <- function(chrom) {
 #### Creation
 
 ```{r}
-create_ideogram("X")
-create_ideogram("Y")
+#create_ideogram("X")
+#create_ideogram("Y")
 ```
 
 #### Plotting
