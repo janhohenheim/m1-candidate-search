@@ -296,11 +296,14 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
   select(-length,
          -Start2.new,
          -End2.new)
+synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
+  mutate(fill = "FF6E63")
 ```
 
 
 ### Create And Save Ideogram
 
+#### Functions
 
 ```{r}
 get_rank <- function(to_rank, ranks) {
@@ -318,8 +321,8 @@ get_filtered_ideogram_data <- function(synteny, chrom) {
 
   karyotype.filtered <- karyotype.filtered |>
     mutate(species = if_else(species == "target", 
-                             "Proto {chrom}" |> glue(), 
-                             "Chr 1 [M5]"))
+                             "Proto{chrom} M1" |> glue(), 
+                             "ProtoX M5"))
   
   contig_head <- karyotype.filtered |>
     select(Chr) |>
@@ -341,16 +344,12 @@ get_filtered_ideogram_data <- function(synteny, chrom) {
     synteny = synteny.filtered
   )
 }
-```
 
-```{r ideogram}
-output_dir <- "karyotype" |> ensure.output()
-
-synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
-  mutate(fill = "FF6E63")
-
+get_ideogram_path <- function(chrom) {
+  "{output_dir}/ideogram_{chrom}" |> glue()
+}
 create_ideogram <- function(chrom) {
-  ideogram_path <- "{output_dir}/ideogram_{chrom}" |> glue()
+  ideogram_path <- get_ideogram_path(chrom)
   data <- synteny.bugz_m1_to_m5.filtered |> 
     filter(chromosome == chrom) |> 
     select(-chromosome) |>
@@ -366,12 +365,39 @@ create_ideogram <- function(chrom) {
     device = "png", 
     file = "{ideogram_path}.png" |> glue(), 
     dpi = 500)
-  
+
+}
+```
+
+#### Creation
+
+```{r}
+#create_ideogram("X")
+#create_ideogram("Y")
+```
+
+#### Plotting
+
+```{r}
+show_ideogram <- function(chrom) {
+  ideogram_path <- get_ideogram_path(chrom)
   ggdraw() +
     draw_image("{ideogram_path}.png" |> glue())
 }
-create_ideogram("X")
-create_ideogram("Y")
+#show_ideogram("X")
+#show_ideogram("Y")
+```
+
+```{r}
+karyotype |> 
+  left_join(synteny.bugz_m1_to_m5.filtered |> select(Species2, chromosome) , by = c(
+    "Chr" = "Species2"
+  )) |> 
+  distinct() |>
+  rename(c("proto_chromosome" = "chromosome")) |>
+  group_by(proto_chromosome) |>
+  summarize(proto_chromosome, length_mb = sum(End) / 10^6) |>
+  distinct()
 ```
 
 
