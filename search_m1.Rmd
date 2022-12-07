@@ -346,6 +346,7 @@ get_filtered_ideogram_data <- function(synteny, chrom) {
 }
 
 get_ideogram_path <- function(chrom) {
+  output_dir <- ensure.output("karyotype")
   "{output_dir}/ideogram_{chrom}" |> glue()
 }
 create_ideogram <- function(chrom) {
@@ -372,8 +373,8 @@ create_ideogram <- function(chrom) {
 #### Creation
 
 ```{r}
-#create_ideogram("X")
-#create_ideogram("Y")
+create_ideogram("X")
+create_ideogram("Y")
 ```
 
 #### Plotting
