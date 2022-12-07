@@ -410,6 +410,8 @@ karyotype |>
 
 ## Iterative Testing Ground
 
+### Check CQs
+
 ```{r}
 karyotype2 <- karyotype |> 
   filter(Chr %in% contigs_of_interest) |>
@@ -423,6 +425,7 @@ karyotype2 <- karyotype |>
 karyotype2
 ```
 
+### Check CQ for specific contigs
 ```{r}
 to_check = c(
   # Y
@@ -443,6 +446,8 @@ m1.alignment |>
   select(contig, cq.norm)
 ```
 
+### Check M1 candidacy status
+
 ```{r}
 candidates <- read_csv("candidates.csv") |>
   mutate(STATUS = STATUS |> as.factor(),
@@ -455,3 +460,25 @@ candidates |>
   filter(tname %in% interest) |>
   select(STATUS)
 ```
+
+### Find M5 Proto X region to BLAST
+
+```{r}
+m1_contigs_on_blast_borders <- c(
+  # X
+  "tig00009705",
+  "tig00009613",
+  # Y
+  "tig00009311",
+  "tig00009710"
+)
+synteny.bugz_m1_to_m5.filtered |>
+  filter(Species2 %in% m1_contigs_on_blast_borders) |>
+  select(contig = Species2, Start1, End1) |>
+  group_by(contig) |>
+  summarize(contig, start_m5 = min(Start1), end_m5 = max(End1)) |>
+  distinct() |>
+  arrange(contig |> match(m1_contigs_on_blast_borders))
+```
+- X: 7457321 - 14509517
+- Y: 11755973 - 15137911
