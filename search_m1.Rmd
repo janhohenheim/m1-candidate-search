@@ -234,7 +234,7 @@ karyotype <- tibble(
   Start = replicate(n, 1) |> as.numeric(),
   End =  c(m5_contig_length, alignment.m1_male$length),
   fill =  c("95FF7D", replicate(n - 1, "8AFFBB")),
-  species = c("ProtoX", replicate(n - 1 , "ProtoY")),
+  species = c("ProtoX", replicate(n - 1 , "target")),
   size = replicate(n, 12),
   color = replicate(n, 25252))
 ```
@@ -257,7 +257,7 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
   mutate(chromosome = if_else(Species2 %in% candidates$contig, "Y", chromosome))
 
 manual_x <- c(
-  "tig00003344",
+  "tig00003381",
   "tig00009705",
   "tig00009613"
 )
@@ -311,20 +311,26 @@ get_rank <- function(to_rank, ranks) {
   to_rank |> as.integer()
 }
 
-get_filtered_ideogram_data <- function(synteny) {
+get_filtered_ideogram_data <- function(synteny, chrom) {
   karyotype.filtered <- karyotype |> 
     filter(species == "ProtoX") |>
-    rbind(karyotype |>
-            filter(Chr %in% synteny$Species2))
+    rbind(karyotype |> filter(Chr %in% synteny$Species2))
+
+  karyotype.filtered <- karyotype.filtered |>
+    mutate(species = if_else(species == "target", 
+                             "Proto {chrom}" |> glue(), 
+                             "Chr 1 [M5]"))
   
   contig_head <- karyotype.filtered |>
     select(Chr) |>
     slice(1) |>
     unlist()
+  
   contig_tail <- karyotype.filtered |>
     select(Chr) |>
     slice(-1) |>
     unlist()
+  
   synteny.filtered <- synteny
   synteny.filtered$Species1 <- synteny$Species1 |>
     get_rank(contig_head)
@@ -338,7 +344,6 @@ get_filtered_ideogram_data <- function(synteny) {
 ```
 
 ```{r ideogram}
-
 output_dir <- "karyotype" |> ensure.output()
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
@@ -349,7 +354,7 @@ create_ideogram <- function(chrom) {
   data <- synteny.bugz_m1_to_m5.filtered |> 
     filter(chromosome == chrom) |> 
     select(-chromosome) |>
-    get_filtered_ideogram_data()
+    get_filtered_ideogram_data(chrom)
   
   ideogram(
     karyotype = data$karyotype,
@@ -370,7 +375,7 @@ create_ideogram("Y")
 ```
 
 
-### Desk
+## Iterative Testing Ground
 
 ```{r}
 karyotype2 <- karyotype |> 
@@ -388,8 +393,8 @@ karyotype2
 ```{r}
 to_check = c(
   # Y
-  "tig00003381",
-  "tig00003344", # -> X
+  "tig00003381", # -> X
+  "tig00003344", # 
   "tig00009705", # -> X
   "tig00009367", # SAM
   "tig00009710", # 
@@ -403,4 +408,17 @@ to_check = c(
 m1.alignment |>
   filter(contig %in% to_check) |>
   select(contig, cq.norm)
+```
+
+```{r}
+candidates <- read_csv("candidates.csv") |>
+  mutate(STATUS = STATUS |> as.factor(),
+         `contig allocation` = `contig allocation` |> as.factor())
+
+interest <- c(
+  "tig00003381"
+)
+candidates |>
+  filter(tname %in% interest) |>
+  select(STATUS)
 ```
