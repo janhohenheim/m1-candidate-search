@@ -240,11 +240,12 @@ karyotype <- tibble(
   Start = replicate(n, 1) |> as.numeric(),
   End =  c(m5_contig_length, alignment.m1_male$length),
   fill =  c("95FF7D", replicate(n - 1, "8AFFBB")),
-  species = c("ProtoX", replicate(n - 1 , "target")),
+  species = c("ProtoX", replicate(n - 1 , "target")), # We will replace "target" later
   size = replicate(n, 12),
   color = replicate(n, 25252))
 ```
 
+### Arrange chromosomes by CQ
 ```{r}
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5 |>
   left_join(m1.alignment |> select(contig, cq.norm), by = c(
@@ -252,7 +253,11 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5 |>
   )) |>
   mutate(chromosome = if_else(cq.norm < 0.4, "Y", "X")) |>
   select(-cq.norm)
+```
 
+### Use prior knowledge of M1 candidates
+
+```{r}
 candidates <- read_csv("candidates.csv") |>
   mutate(STATUS = STATUS |> as.factor(),
          `contig allocation` = `contig allocation` |> as.factor()) |>
@@ -261,20 +266,23 @@ candidates <- read_csv("candidates.csv") |>
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
   mutate(chromosome = if_else(Species2 %in% candidates$contig, "Y", chromosome))
+```
 
+### Manually fix wrong double assignments based on CQ comparison
+Some contigs have both the proto-Y[M1] and the proto-X[M1] assigned to the same chromosome. Check these pairs manually and move them.
+```{r}
 manual_x <- c(
   "tig00003381",
   "tig00009705",
   "tig00009613"
 )
 manual_y <- c(
-  "tig00009652"
+  "tig00009652" #
 )
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
   mutate(chromosome = if_else(Species2 %in% manual_x, "X", chromosome)) |> 
   mutate(chromosome = if_else(Species2 %in% manual_y, "Y", chromosome))
-
 ```
 
 
