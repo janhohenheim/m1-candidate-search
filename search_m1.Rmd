@@ -331,23 +331,6 @@ for (i in 1:nrow(clashes_on_y)) {
 }
 ```
 
-### Manually fix wrong double assignments based on CQ comparison
-Some contigs have both the proto-Y[M1] and the proto-X[M1] assigned to the same chromosome. Check these pairs manually and move them.
-```{r}
-manual_x <- c(
-#  "tig00003381",
-#  "tig00009705",
-#  "tig00009613"
-)
-manual_y <- c(
-#  "tig00009652",
-#  "tig00009708" # This guy is Y even though CQ says otherwise
-)
-
-synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
-  mutate(chromosome = if_else(Species2 %in% manual_x, "X", chromosome)) |> 
-  mutate(chromosome = if_else(Species2 %in% manual_y, "Y", chromosome))
-```
 
 ### Flip inverted contigs
 Chosen by eye
@@ -381,13 +364,14 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
 
 ### Trim ends of MI contigs
 ```{r}
+karyotype.length <- karyotype |> nrow()
 start_contigs <- c(
-#  "tig00003344", # Y
-#  "tig00003381" # X
+  karyotype$Chr[2],
+  karyotype$Chr[3]
 )
 end_contigs <- c(
-#  "tig00009613", # Y,
-#  "tig00009708" # X
+  karyotype$Chr[karyotype.length],
+  karyotype$Chr[karyotype.length - 1]
 )
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
