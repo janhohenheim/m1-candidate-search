@@ -256,13 +256,16 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5 |>
 ```
 
 ### Use prior knowledge of M1 candidates
-
+- contigs with candidates are assumed to be proto-Y
+- the contig with SAM *must* be proto-Y
+- on clash: the contig with the most candidates is assumed to be proto-Y
 ```{r}
 candidates <- read_csv("candidates.csv") |>
   mutate(STATUS = STATUS |> as.factor(),
          `contig allocation` = `contig allocation` |> as.factor()) |>
-  filter(STATUS != "not in all males") |>
-  select(contig = tname)
+  select(contig = tname, STATUS) |>
+  group_by(contig) |>
+  summarize(contig, candidate_count = n(), has_sam = "good candidate: SAM" %in% STATUS)
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
   mutate(chromosome = if_else(Species2 %in% candidates$contig, "Y", chromosome))
@@ -277,7 +280,8 @@ manual_x <- c(
   "tig00009613"
 )
 manual_y <- c(
-  "tig00009652" #
+  "tig00009652",
+  "tig00009708" # This guy is Y even though CQ says otherwise
 )
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
@@ -314,6 +318,48 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
   mutate(fill = "FF6E63")
 ```
+
+### Trim ends of MI contigs
+```{r}
+start_contigs <- c(
+  "tig00003344", # Y
+  "tig00003381" # X
+)
+end_contigs <- c(
+  "tig00009613", # Y,
+  "tig00009708" # X
+)
+
+synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
+  group_by(Species2) |>
+  summarize(
+    Species1, Start1, End1, Species2, Start2, End2, chromosome, fill,
+    # -1 because a Start of 1 means no offset
+    Start2.offset = if_else(Species2 %in% start_contigs, 
+                            min(Start2) - 1, 
+                            0)) |>
+  mutate(
+    Start2 = Start2 - Start2.offset,
+    End2 = End2 - Start2.offset) |>
+  ungroup()
+
+karyotype <- karyotype |>
+  left_join(synteny.bugz_m1_to_m5.filtered |> select(Species2, Start2.offset, End2), by = c(
+    "Chr" = "Species2"
+  )) |>
+  group_by(Chr) |>
+  summarize(
+    Start,
+    End = if_else(Chr %in% end_contigs, max(End2), if_else(Chr != bugz, End - Start2.offset, End)),
+    fill, species, size, color) |>
+  distinct() |>
+  ungroup() |>
+  arrange(factor(Chr, levels = order_on_synteny))
+
+synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
+  # ideogram requires a specific column order
+  select(Species1, Start1, End1, Species2, Start2, End2, chromosome, fill)
+``` 
 
 ### Create And Save Ideogram
 
@@ -380,15 +426,14 @@ create_ideogram <- function(chrom) {
     device = "png", 
     file = "{ideogram_path}.png" |> glue(), 
     dpi = 500)
-
 }
 ```
 
 #### Creation
 
 ```{r}
-#create_ideogram("X")
-#create_ideogram("Y")
+create_ideogram("X")
+create_ideogram("Y")
 ```
 
 #### Plotting
@@ -411,25 +456,13 @@ karyotype |>
   distinct() |>
   rename(c("proto_chromosome" = "chromosome")) |>
   group_by(proto_chromosome) |>
-  summarize(proto_chromosome, length_mb = sum(End) / 10^6) |>
+  # Offset of + 1 because `Start = 1` means no shift
+  summarize(proto_chromosome, length_mb = sum(End - Start + 1) / 10^6) |>
   distinct()
 ```
 
 
 ## Iterative Testing Ground
-
-```{r}
-karyotype2 <- karyotype |> 
-  filter(Chr %in% contigs_of_interest) |>
-  left_join(m1.alignment |> select(contig, cq.norm), by = c(
-    "Chr" = "contig"
-  )) |>
-  filter(cq.norm < 0.5) |>
-  select(-cq.norm)
-  #rbind(karyotype |> filter(species == "ProtoX"))
-
-karyotype2
-```
 
 ```{r}
 to_check = c(
