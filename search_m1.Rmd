@@ -506,37 +506,4 @@ karyotype |>
 ```
 
 
-## Iterative Testing Ground
 
-```{r}
-to_check = c(
-  # Y
-  "tig00003381", # -> X
-  "tig00003344", # 
-  "tig00009705", # -> X
-  "tig00009367", # SAM
-  "tig00009710", # 
-  "tig00009613", # -> X because of candidate list
-  # X
-  "tig00009652", # -> Y
-  "tig00009658"
-  #"tig00009311"
-)
-
-m1.alignment |>
-  filter(contig %in% to_check) |>
-  select(contig, cq.norm)
-```
-
-```{r}
-candidates <- read_csv("candidates.csv") |>
-  mutate(STATUS = STATUS |> as.factor(),
-         `contig allocation` = `contig allocation` |> as.factor())
-
-interest <- c(
-  "tig00003381"
-)
-candidates |>
-  filter(tname %in% interest) |>
-  select(STATUS)
-```
