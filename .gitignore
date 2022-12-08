@@ -42,4 +42,4 @@ vignettes/*.pdf
 /output/
 *.nb.html
 
-/data/*.fa
+*.fa
