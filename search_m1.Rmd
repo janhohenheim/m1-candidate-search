@@ -251,7 +251,7 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5 |>
   left_join(m1.alignment |> select(contig, cq.norm), by = c(
     "Species2" = "contig"
   )) |>
-  mutate(chromosome = if_else(cq.norm < 0.4, "Y", "X")) |>
+  mutate(chromosome = if_else(cq.norm < 0.0, "Y", "X")) |>
   select(-cq.norm)
 ```
 
@@ -263,25 +263,85 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5 |>
 candidates <- read_csv("candidates.csv") |>
   mutate(STATUS = STATUS |> as.factor(),
          `contig allocation` = `contig allocation` |> as.factor()) |>
-  select(contig = tname, STATUS) |>
+  select(contig = tname, status = STATUS, cq = `candidate CQ`) |>
   group_by(contig) |>
-  summarize(contig, candidate_count = n(), has_sam = "good candidate: SAM" %in% STATUS)
+  summarize(
+    contig, 
+    candidate_count = n(), 
+    has_sam = "good candidate: SAM" %in% status,
+    cq.sum = sum(cq)) |>
+  distinct()
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
   mutate(chromosome = if_else(Species2 %in% candidates$contig, "Y", chromosome))
+```
+
+### Fix clashes
+```{r}
+# 9652 X, 9658 Y
+# Both significant candidate, no one knows
+clashes_on_y <- synteny.bugz_m1_to_m5.filtered |> 
+  distinct() |> 
+  filter(chromosome == "Y") |> 
+  group_by(Start1) |> 
+  summarize(
+    a = Species2 |> min(), 
+    b = Species2 |> max()) |> 
+  filter(a != b) |> 
+  select(-Start1) |>
+  distinct() |>
+  left_join(candidates |> 
+              select(
+                contig,
+                a.candidate_count = candidate_count, 
+                a.has_sam = has_sam,
+                a.cq.sum = cq.sum), 
+            by = c("a" = "contig")) |>
+  left_join(candidates |> 
+              select(
+                contig,
+                b.candidate_count = candidate_count, 
+                b.has_sam = has_sam,
+                b.cq.sum = cq.sum), 
+            by = c("b" = "contig")) |>
+  distinct()
+```
+
+```{r}
+for (i in 1:nrow(clashes_on_y)) {
+  a <- clashes_on_y$a[i]
+  b <- clashes_on_y$b[i]
+  a.count <- clashes_on_y$a.candidate_count[i]
+  b.count <- clashes_on_y$b.candidate_count[i]
+  a.cq <- clashes_on_y$a.cq.sum[i]
+  b.cq <- clashes_on_y$b.cq.sum[i]
+  
+  a.is_y <- (a.count > b.count) | clashes_on_y$a.has_sam[i]
+  b.is_y <- (a.count < b.count) | clashes_on_y$b.has_sam[i]
+  if (!(a.is_y | b.is_y)) {
+    a.is_y <- a.cq < b.cq
+  }
+  if (a.is_y) {
+    synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
+      mutate(chromosome = if_else(Species2 == b, "X", chromosome))
+  } else {
+    synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
+      mutate(chromosome = if_else(Species2 == a, "X", chromosome))
+  }
+}
 ```
 
 ### Manually fix wrong double assignments based on CQ comparison
 Some contigs have both the proto-Y[M1] and the proto-X[M1] assigned to the same chromosome. Check these pairs manually and move them.
 ```{r}
 manual_x <- c(
-  "tig00003381",
-  "tig00009705",
-  "tig00009613"
+#  "tig00003381",
+#  "tig00009705",
+#  "tig00009613"
 )
 manual_y <- c(
-  "tig00009652",
-  "tig00009708" # This guy is Y even though CQ says otherwise
+#  "tig00009652",
+#  "tig00009708" # This guy is Y even though CQ says otherwise
 )
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
@@ -322,12 +382,12 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
 ### Trim ends of MI contigs
 ```{r}
 start_contigs <- c(
-  "tig00003344", # Y
-  "tig00003381" # X
+#  "tig00003344", # Y
+#  "tig00003381" # X
 )
 end_contigs <- c(
-  "tig00009613", # Y,
-  "tig00009708" # X
+#  "tig00009613", # Y,
+#  "tig00009708" # X
 )
 
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
