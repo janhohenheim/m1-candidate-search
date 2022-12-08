@@ -285,7 +285,8 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
   mutate(chromosome = if_else(Species2 %in% manual_y, "Y", chromosome))
 ```
 
-
+### Flip inverted contigs
+Chosen by eye
 ```{r}
 to_flip <- c(
   # X
@@ -313,7 +314,6 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
 synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
   mutate(fill = "FF6E63")
 ```
-
 
 ### Create And Save Ideogram
 
