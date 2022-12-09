@@ -395,31 +395,28 @@ synteny <- synteny |>
 ``` 
 
 ### Fill in gaps
-Gaps determined by eye
 
 #### Find gaps
 ```{r}
-gaps.pairs <- tibble(
-  chromosome = c("Y", "X"),
-  left = c("tig00009367", "tig00009311"),
-  right = c("tig00009710", "tig00009613")
-)
+# Fake contigs to mark start of synteny.
+x_start <- "X start"
+y_start <- "Y start"
 
 synteny.limits <- synteny |>
   mutate(contig = Species2) |>
   group_by(contig) |>
   summarize(
-    start = Start1 |> max(),
+    start = Start1 |> min(),
     end = End1 |> max(),
     chromosome
   ) |> 
   distinct() |>
   ungroup() |>
   rbind(tibble(
-    start = c(1, 1, proto_x_m5.length, proto_x_m5.length),
-    end = c(1, 1, proto_x_m5.length, proto_x_m5.length),
+    start = c(0, 0, proto_x_m5.length + 1, proto_x_m5.length + 1),
+    end = c(0, 0, proto_x_m5.length + 1, proto_x_m5.length + 1),
     chromosome = c("X", "Y", "X", "Y"),
-    contig = c("X start", "Y start", "X end", "Y end")
+    contig = c(x_start, y_start, "X end", "Y end")
   )) |>
   arrange(chromosome, start)
 
@@ -433,57 +430,40 @@ synteny.limits.right <- synteny.limits |>
 index.last_y <- which(synteny.limits$chromosome == "Y") |> last()
 index.last_x <- which(synteny.limits$chromosome == "X") |> last()
 
-synteny.limits |> 
+gaps <- synteny.limits |> 
   slice(-index.last_x, -index.last_y) |>
   cbind(synteny.limits.right |>
          slice(-1, -(index.last_x + 1))) |>
   summarize(
-    start = end,
-    end = right.start,
+    start = end + 1,
+    end = right.start - 1,
     chromosome,
     after = contig) |>
-  group_by(chromosome) |>
-  mutate(contig = "{chromosome} gap {row_number()}" |> glue())
-
-```
-
-```{r}
-gaps <- gaps.pairs |> 
-  left_join(
-    synteny |>
-      select(contig = Species2, left.end = End1),
-    by = c("left" = "contig")) |>
-  group_by(left) |>
-  summarize(chromosome, left, right, start = max(left.end)) |>
-  distinct() |>  
-  left_join(
-    synteny |>
-      select(contig = Species2, right.start = Start1),
-    by = c("right" = "contig")) |>
-  group_by(right) |>
-  summarize(chromosome, left, right, start, end = min(right.start)) |>
-  distinct() |>
   ungroup() |>
-  arrange(start) |>
-  mutate(contig = "gap {row_number()}" |> glue()) |>
-  select(contig, left, right, start, end, chromosome)
-  
+  mutate(contig = " " |> strrep(row_number()))
+
 gaps
 ```
 
+
 #### Insert gaps into contig order
 ```{r}
+contigs_of_interest <- c(x_start, y_start) |> 
+  append(contigs_of_interest)
+
 insertion_indices <- gaps |>
-  mutate(index = left |> purrr::map_dbl(\(contig) which(contigs_of_interest == contig)[[1]])) |>
+  mutate(index = after |> purrr::map_dbl(\(contig) which(contigs_of_interest == contig)[[1]])) |>
   select(contig, index) |>
   arrange(index |> desc())
 
-for (i in insertion_indices |> seq_along()) {
+for (i in 1:nrow(insertion_indices)) {
   contig <- insertion_indices$contig[i]
   index <- insertion_indices$index[i]
   contigs_of_interest <- contigs_of_interest |>
     append(contig, after = index)
 }
+# Positions 1, 3: fake marker contigs for the start
+contigs_of_interest <- contigs_of_interest[-1][-2]
 ```
 
 #### Insert gaps into karyotype
@@ -519,6 +499,23 @@ gaps.synteny <- gaps |>
   )
 synteny <- synteny |>
   rbind(gaps.synteny)
+```
+
+#### Take out start gaps
+The gaps at the start make the library buggy and remove the chromosome name.
+Skip the following code if you are creating new labels for the images later in a photo editing tool anyways
+
+```{r}
+skip <- TRUE
+if (!skip) {
+  "Removing start gaps"
+  contigs_to_remove <- contigs_of_interest[1:2]
+  contigs_of_interest <- contigs_of_interest[3:length(contigs_of_interest)]
+  synteny <- synteny |>
+    filter(!(Species2 %in% contigs_to_remove))
+} else {
+  "Keeping start gaps"
+}
 ```
 
 ### Create And Save Ideogram
