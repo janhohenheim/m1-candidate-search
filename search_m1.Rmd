@@ -399,13 +399,56 @@ Gaps determined by eye
 
 #### Find gaps
 ```{r}
-gaps <- tibble(
+gaps.pairs <- tibble(
   chromosome = c("Y", "X"),
   left = c("tig00009367", "tig00009311"),
   right = c("tig00009710", "tig00009613")
 )
 
-gaps <- gaps |> 
+synteny.limits <- synteny |>
+  mutate(contig = Species2) |>
+  group_by(contig) |>
+  summarize(
+    start = Start1 |> max(),
+    end = End1 |> max(),
+    chromosome
+  ) |> 
+  distinct() |>
+  ungroup() |>
+  rbind(tibble(
+    start = c(1, 1, proto_x_m5.length, proto_x_m5.length),
+    end = c(1, 1, proto_x_m5.length, proto_x_m5.length),
+    chromosome = c("X", "Y", "X", "Y"),
+    contig = c("X start", "Y start", "X end", "Y end")
+  )) |>
+  arrange(chromosome, start)
+
+synteny.limits
+
+synteny.limits.right <- synteny.limits |>
+  summarize(right.start = start, chromosome) |>
+  arrange(chromosome, right.start) |>
+  select(-chromosome)
+
+index.last_y <- which(synteny.limits$chromosome == "Y") |> last()
+index.last_x <- which(synteny.limits$chromosome == "X") |> last()
+
+synteny.limits |> 
+  slice(-index.last_x, -index.last_y) |>
+  cbind(synteny.limits.right |>
+         slice(-1, -(index.last_x + 1))) |>
+  summarize(
+    start = end,
+    end = right.start,
+    chromosome,
+    after = contig) |>
+  group_by(chromosome) |>
+  mutate(contig = "{chromosome} gap {row_number()}" |> glue())
+
+```
+
+```{r}
+gaps <- gaps.pairs |> 
   left_join(
     synteny |>
       select(contig = Species2, left.end = End1),
@@ -421,6 +464,7 @@ gaps <- gaps |>
   summarize(chromosome, left, right, start, end = min(right.start)) |>
   distinct() |>
   ungroup() |>
+  arrange(start) |>
   mutate(contig = "gap {row_number()}" |> glue()) |>
   select(contig, left, right, start, end, chromosome)
   
@@ -444,15 +488,17 @@ for (i in insertion_indices |> seq_along()) {
 
 #### Insert gaps into karyotype
 ```{r}
+background <- "fcf4dc"
+
 gaps.karyotype <- gaps |>
   summarize(
     Chr = contig,
     Start = 1,
     End = end - start + 1,
     species = "target",
-    fill = "CDCDCD",
-    size = 12,
-    color = 25252)
+    fill = background,
+    size = 0,
+    color = background)
 karyotype <- karyotype |>
   rbind(gaps.karyotype) |>
   arrange(factor(Chr, levels = contigs_of_interest))
@@ -469,7 +515,7 @@ gaps.synteny <- gaps |>
     Start2 = 1,
     End2 = end - start + 1,
     chromosome = chromosome,
-    fill = "CDCDCD"
+    fill = background
   )
 synteny <- synteny |>
   rbind(gaps.synteny)
