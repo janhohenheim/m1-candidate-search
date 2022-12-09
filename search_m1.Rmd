@@ -518,6 +518,7 @@ if (!skip) {
 }
 ```
 
+
 ### Create And Save Ideogram
 
 #### Functions
@@ -612,10 +613,17 @@ karyotype |>
     "Chr" = "Species2"
   )) |> 
   distinct() |>
-  rename(c("proto_chromosome" = "chromosome")) |>
-  group_by(proto_chromosome) |>
-  # Offset of + 1 because `Start = 1` means no shift
-  summarize(proto_chromosome, length_mb = sum(End - Start + 1) / 10^6) |>
+  mutate(chromosome = if_else(is.na(chromosome), "Proto X [MV]", chromosome)) |>
+  mutate(chromosome = if_else(chromosome == "X", "Proto X [MI]", chromosome)) |>
+  mutate(chromosome = if_else(chromosome == "Y", "Proto Y [MI]", chromosome)) |>
+  mutate(gap = Chr |> trimws() |> nchar() != 0) |>
+  # Offset of + 1 because `Start is minimally 1
+  mutate(length.with_gaps = End - Start + 1) |>
+  mutate(length.only_contigs = length.with_gaps * gap) |>
+  group_by(chromosome) |>
+  summarize(
+    length.mbs.with_gaps = sum(length.with_gaps) / 10^6,
+    length.mbs.only_contigs = sum(length.only_contigs) / 10^6) |>
   distinct()
 ```
 
