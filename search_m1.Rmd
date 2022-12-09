@@ -148,15 +148,15 @@ read.synteny <- function(file) {
 
 synteny.dmel_to_m5 <- read.synteny("Dmel_vs_MV/Dmel_MV_sinteny.txt")
 
-bugz <- "tig00000533"
-bugz.orthologs <- synteny.dmel_to_m5 |>
-  filter(Species2 == bugz) |>
+proto_x_m5 <- "tig00000533"
+proto_x_m5.orthologs <- synteny.dmel_to_m5 |>
+  filter(Species2 == proto_x_m5) |>
   select(Ortho) |>
   unique() |>
   unlist()       
 
 synteny.dmel_to_m1 <- read.synteny("Dmel_vs_MI/Dmel_MI_sinteny.txt") |>
-  filter(Ortho %in% bugz.orthologs)
+  filter(Ortho %in% proto_x_m5.orthologs)
 
 synteny.dmel_to_m1 <- synteny.dmel_to_m1 |>
   count(Ortho) |>
@@ -189,8 +189,8 @@ contigs_of_interest <- c(
 synteny.dmel_to_m1 <- synteny.dmel_to_m1 |>
   filter(Species2 %in% contigs_of_interest)    
 
-synteny.bugz_dmel_to_m5 <- synteny.dmel_to_m5 |>
-  filter(Species2 == bugz) |>
+synteny.proto_x_m5 <- synteny.dmel_to_m5 |>
+  filter(Species2 == proto_x_m5) |>
   select(Ortho, Species2, Start2, End2) |>  
   rename(c(
     "Species1" = "Species2",
@@ -198,9 +198,9 @@ synteny.bugz_dmel_to_m5 <- synteny.dmel_to_m5 |>
     "End1" = "End2"
   )) 
 
-synteny.bugz_m1_to_m5 <- synteny.dmel_to_m1 |>
+synteny <- synteny.dmel_to_m1 |>
   select(Ortho, Species2, Start2, End2) |>
-  left_join(synteny.bugz_dmel_to_m5, by = "Ortho") |>
+  left_join(synteny.proto_x_m5, by = "Ortho") |>
   select(Species1, Start1, End1, Species2, Start2, End2)
 ```
 
@@ -213,7 +213,7 @@ candidates <- read_csv("data/candidates.csv") |>
 ### Compute Karyotype
 
 ```{r}
-# The rest are at the end; that's ok
+# The rest are at the end
 order_on_synteny <- c(
   'tig00003381', 
   'tig00003344',
@@ -234,11 +234,11 @@ n <- 1 + synteny.dmel_to_m1$Species2 |>
   unique() |>
   length()
 
-m5_contig_length <- 17343608
+proto_x_m5.length <- 17343608
 karyotype <- tibble(
-  Chr = c(bugz, alignment.m1_male$contig),
+  Chr = c(proto_x_m5, alignment.m1_male$contig),
   Start = replicate(n, 1) |> as.numeric(),
-  End =  c(m5_contig_length, alignment.m1_male$length),
+  End =  c(proto_x_m5.length, alignment.m1_male$length),
   fill =  c("95FF7D", replicate(n - 1, "8AFFBB")),
   species = c("ProtoX", replicate(n - 1 , "target")), # We will replace "target" later
   size = replicate(n, 12),
@@ -247,7 +247,7 @@ karyotype <- tibble(
 
 ### Arrange chromosomes by CQ
 ```{r}
-synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5 |>
+synteny <- synteny |>
   left_join(m1.alignment |> select(contig, cq.norm), by = c(
     "Species2" = "contig"
   )) |>
@@ -272,7 +272,7 @@ candidates <- read_csv("candidates.csv") |>
     cq.sum = sum(cq)) |>
   distinct()
 
-synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
+synteny <- synteny |> 
   mutate(chromosome = if_else(Species2 %in% candidates$contig, "Y", chromosome))
 ```
 
@@ -280,7 +280,7 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
 ```{r}
 # 9652 X, 9658 Y
 # Both significant candidate, no one knows
-clashes_on_y <- synteny.bugz_m1_to_m5.filtered |> 
+clashes_on_y <- synteny |> 
   distinct() |> 
   filter(chromosome == "Y") |> 
   group_by(Start1) |> 
@@ -322,10 +322,10 @@ for (i in 1:nrow(clashes_on_y)) {
     a.is_y <- a.cq < b.cq
   }
   if (a.is_y) {
-    synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
+    synteny <- synteny |> 
       mutate(chromosome = if_else(Species2 == b, "X", chromosome))
   } else {
-    synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |> 
+    synteny <- synteny |> 
       mutate(chromosome = if_else(Species2 == a, "X", chromosome))
   }
 }
@@ -347,7 +347,7 @@ to_flip <- c(
   "tig00009652",
   "tig00009710"
 )
-synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
+synteny <- synteny |>
   left_join(m1.alignment |> select(contig, length), by = c(
     "Species2" = "contig"
   )) |>
@@ -358,7 +358,7 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
   select(-length,
          -Start2.new,
          -End2.new)
-synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
+synteny <- synteny |>
   mutate(fill = "FF6E63")
 ```
 
@@ -374,7 +374,7 @@ end_contigs <- c(
   karyotype$Chr[karyotype.length - 1]
 )
 
-synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
+synteny <- synteny |>
   group_by(Species2) |>
   summarize(
     Species1, Start1, End1, Species2, Start2, End2, chromosome, fill,
@@ -388,19 +388,19 @@ synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
   ungroup()
 
 karyotype <- karyotype |>
-  left_join(synteny.bugz_m1_to_m5.filtered |> select(Species2, Start2.offset, End2), by = c(
+  left_join(synteny |> select(Species2, Start2.offset, End2), by = c(
     "Chr" = "Species2"
   )) |>
   group_by(Chr) |>
   summarize(
     Start,
-    End = if_else(Chr %in% end_contigs, max(End2), if_else(Chr != bugz, End - Start2.offset, End)),
+    End = if_else(Chr %in% end_contigs, max(End2), if_else(Chr != proto_x_m5, End - Start2.offset, End)),
     fill, species, size, color) |>
   distinct() |>
   ungroup() |>
   arrange(factor(Chr, levels = order_on_synteny))
 
-synteny.bugz_m1_to_m5.filtered <- synteny.bugz_m1_to_m5.filtered |>
+synteny <- synteny |>
   # ideogram requires a specific column order
   select(Species1, Start1, End1, Species2, Start2, End2, chromosome, fill)
 ``` 
@@ -419,33 +419,33 @@ get_rank <- function(to_rank, ranks) {
 }
 
 get_filtered_ideogram_data <- function(synteny, chrom) {
-  karyotype.filtered <- karyotype |> 
+  karyotype.with_chromosomes <- karyotype |> 
     filter(species == "ProtoX") |>
     rbind(karyotype |> filter(Chr %in% synteny$Species2))
 
-  karyotype.filtered <- karyotype.filtered |>
+  karyotype.with_chromosomes <- karyotype.with_chromosomes |>
     mutate(species = if_else(species == "target", 
                              "Proto{chrom} M1" |> glue(), 
                              "ProtoX M5"))
   
-  contig_head <- karyotype.filtered |>
+  contig_head <- karyotype.with_chromosomes |>
     select(Chr) |>
     slice(1) |>
     unlist()
   
-  contig_tail <- karyotype.filtered |>
+  contig_tail <- karyotype.with_chromosomes |>
     select(Chr) |>
     slice(-1) |>
     unlist()
   
-  synteny.filtered <- synteny
-  synteny.filtered$Species1 <- synteny$Species1 |>
+  synteny.ranked <- synteny
+  synteny.ranked$Species1 <- synteny.ranked$Species1 |>
     get_rank(contig_head)
-  synteny.filtered$Species2 <- synteny$Species2 |>
+  synteny.ranked$Species2 <- synteny.ranked$Species2 |>
     get_rank(contig_tail)
   list(
-    karyotype = karyotype.filtered,
-    synteny = synteny.filtered
+    karyotype = karyotype.with_chromosomes,
+    synteny = synteny.ranked
   )
 }
 
@@ -455,7 +455,7 @@ get_ideogram_path <- function(chrom) {
 }
 create_ideogram <- function(chrom) {
   ideogram_path <- get_ideogram_path(chrom)
-  data <- synteny.bugz_m1_to_m5.filtered |> 
+  data <- synteny |> 
     filter(chromosome == chrom) |> 
     select(-chromosome) |>
     get_filtered_ideogram_data(chrom)
@@ -494,7 +494,7 @@ show_ideogram <- function(chrom) {
 
 ```{r}
 karyotype |> 
-  left_join(synteny.bugz_m1_to_m5.filtered |> select(Species2, chromosome) , by = c(
+  left_join(synteny |> select(Species2, chromosome) , by = c(
     "Chr" = "Species2"
   )) |> 
   distinct() |>
