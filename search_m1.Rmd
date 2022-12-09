@@ -173,18 +173,19 @@ synteny.dmel_to_m1 |>
 
 ```{r}
 # These have a good amount of distincly mapped genes
+# The order is important for the ideogram. It was judged by eye.
 contigs_of_interest <- c(
-  "tig00003344", 
-  "tig00003381", 
-  "tig00009311", 
-  "tig00009367",
-  "tig00009613",
-  "tig00009652",
-  "tig00009658", 
-  "tig00009705", 
-  "tig00009706", 
-  "tig00009708", 
-  "tig00009710")
+  'tig00003381', 
+  'tig00003344',
+  'tig00009652', 
+  'tig00009658',
+  'tig00009706', 
+  'tig00009705',
+  'tig00009367', 
+  'tig00009311', 
+  'tig00009710',
+  'tig00009613',
+  'tig00009708')
 
 synteny.dmel_to_m1 <- synteny.dmel_to_m1 |>
   filter(Species2 %in% contigs_of_interest)    
@@ -213,22 +214,10 @@ candidates <- read_csv("data/candidates.csv") |>
 ### Compute Karyotype
 
 ```{r}
-# The rest are at the end
-order_on_synteny <- c(
-  'tig00003381', 
-  'tig00003344',
-  'tig00009652', 
-  'tig00009658',
-  'tig00009706', 
-  'tig00009705',
-  'tig00009367', 
-  'tig00009311', 
-  'tig00009710')
-
 alignment.m1_male <- read.single_alignment("contigScale/MIaabys_male_on_MIcontigs_depth_perContig.txt") |>
   select(contig, coverage, length) |>
   filter(contig %in% synteny.dmel_to_m1$Species2) |>
-  arrange(factor(contig, levels = order_on_synteny))
+  arrange(factor(contig, levels = contigs_of_interest))
 
 n <- 1 + synteny.dmel_to_m1$Species2 |>
   unique() |>
@@ -398,12 +387,93 @@ karyotype <- karyotype |>
     fill, species, size, color) |>
   distinct() |>
   ungroup() |>
-  arrange(factor(Chr, levels = order_on_synteny))
+  arrange(factor(Chr, levels = contigs_of_interest))
 
 synteny <- synteny |>
   # ideogram requires a specific column order
   select(Species1, Start1, End1, Species2, Start2, End2, chromosome, fill)
 ``` 
+
+### Fill in gaps
+Gaps determined by eye
+
+#### Find gaps
+```{r}
+gaps <- tibble(
+  chromosome = c("Y", "X"),
+  left = c("tig00009367", "tig00009311"),
+  right = c("tig00009710", "tig00009613")
+)
+
+gaps <- gaps |> 
+  left_join(
+    synteny |>
+      select(contig = Species2, left.end = End1),
+    by = c("left" = "contig")) |>
+  group_by(left) |>
+  summarize(chromosome, left, right, start = max(left.end)) |>
+  distinct() |>  
+  left_join(
+    synteny |>
+      select(contig = Species2, right.start = Start1),
+    by = c("right" = "contig")) |>
+  group_by(right) |>
+  summarize(chromosome, left, right, start, end = min(right.start)) |>
+  distinct() |>
+  ungroup() |>
+  mutate(contig = "gap {row_number()}" |> glue()) |>
+  select(contig, left, right, start, end, chromosome)
+  
+gaps
+```
+
+#### Insert gaps into contig order
+```{r}
+insertion_indices <- gaps |>
+  mutate(index = left |> purrr::map_dbl(\(contig) which(contigs_of_interest == contig)[[1]])) |>
+  select(contig, index) |>
+  arrange(index |> desc())
+
+for (i in insertion_indices |> seq_along()) {
+  contig <- insertion_indices$contig[i]
+  index <- insertion_indices$index[i]
+  contigs_of_interest <- contigs_of_interest |>
+    append(contig, after = index)
+}
+```
+
+#### Insert gaps into karyotype
+```{r}
+gaps.karyotype <- gaps |>
+  summarize(
+    Chr = contig,
+    Start = 1,
+    End = end - start + 1,
+    species = "target",
+    fill = "CDCDCD",
+    size = 12,
+    color = 25252)
+karyotype <- karyotype |>
+  rbind(gaps.karyotype) |>
+  arrange(factor(Chr, levels = contigs_of_interest))
+```
+
+#### Insert gaps into synteny
+```{r}
+gaps.synteny <- gaps |>
+  summarize(
+    Species1 = proto_x_m5,
+    Start1 = start,
+    End1 = end,
+    Species2 = contig,
+    Start2 = 1,
+    End2 = end - start + 1,
+    chromosome = chromosome,
+    fill = "CDCDCD"
+  )
+synteny <- synteny |>
+  rbind(gaps.synteny)
+```
 
 ### Create And Save Ideogram
 
@@ -459,7 +529,7 @@ create_ideogram <- function(chrom) {
     filter(chromosome == chrom) |> 
     select(-chromosome) |>
     get_filtered_ideogram_data(chrom)
-  
+
   ideogram(
     karyotype = data$karyotype,
     synteny = data$synteny |> as.data.frame(),
@@ -492,6 +562,7 @@ show_ideogram <- function(chrom) {
 #show_ideogram("Y")
 ```
 
+### Show chromosome sizes
 ```{r}
 karyotype |> 
   left_join(synteny |> select(Species2, chromosome) , by = c(
