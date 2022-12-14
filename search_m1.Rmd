@@ -240,7 +240,7 @@ synteny <- synteny |>
   left_join(m1.alignment |> select(contig, cq.norm), by = c(
     "Species2" = "contig"
   )) |>
-  mutate(chromosome = if_else(cq.norm < 0.0, "Y", "X")) |>
+  mutate(chromosome = if_else(cq.norm < 0.1, "Y", "X")) |>
   select(-cq.norm)
 ```
 
@@ -320,6 +320,13 @@ for (i in 1:nrow(clashes_on_y)) {
 }
 ```
 
+### Manual fixes
+```{r}
+manual_x <- c("tig00009658") # Because of higher matches to Proto-X [MV]
+manual_y <- c("tig00009652") # Homolog of tig00009658
+synteny <- synteny |>
+  mutate(chromosome = if_else(Species2 %in% manual_x, "X", if_else(Species2 %in% manual_y, "Y", chromosome)))
+```
 
 ### Flip inverted contigs
 Chosen by eye
@@ -421,7 +428,9 @@ synteny.limits <- synteny |>
   arrange(chromosome, start)
 
 synteny.limits
+```
 
+```{r}
 synteny.limits.right <- synteny.limits |>
   summarize(right.start = start, chromosome) |>
   arrange(chromosome, right.start) |>
@@ -440,11 +449,64 @@ gaps <- synteny.limits |>
     chromosome,
     after = contig) |>
   ungroup() |>
+  # Hack: gap contig names are just distinct whitespace to make them not have a name in ideogram
   mutate(contig = " " |> strrep(row_number()))
 
 gaps
 ```
 
+#### Scale gaps
+Since the ideogram scales all chromosomes to the same visual length regardless of actual contig length, we scale the gaps so that the visual contig length is the same for all chromosomes
+```{r}
+lengths.gaps <- gaps |>
+  # Offset of + 1 because `Start is minimally 1
+  mutate(length = end - start + 1) |>
+  group_by(chromosome) |>
+  summarize(length = sum(length)) |>
+  distinct() |>
+  ungroup() |>
+  rbind(tibble(
+    chromosome = c("ref"),
+    length = c(0)
+  ))
+
+lengths.contigs <- karyotype |>
+  left_join(synteny |> select(Species2, chromosome), by = c("Chr" = "Species2")) |>
+  mutate(length = End - Start + 1) |>
+  group_by(chromosome) |>
+  distinct() |>
+  summarize(length = sum(length)) |>
+  ungroup() |>
+  rbind(karyotype |>
+          filter(Chr == proto_x_m5) |>
+          mutate(
+            chromosome = "ref",
+            length = End - Start + 1) |>
+          select(chromosome, length))
+
+lengths <- lengths.gaps |>
+  left_join(lengths.contigs, 
+            by = c("chromosome"), 
+            suffix = c(".gaps", ".contigs"))
+ref_length <- lengths.contigs |>
+  filter(chromosome == "ref") |>
+  select(length) |>
+  first()
+
+scaling_factor <- lengths |>
+  mutate(factor = if_else(length.gaps == 0, 0, (ref_length - length.contigs) / length.gaps)) |>
+  mutate(length.total = length.contigs + length.gaps,
+         total.scaled = length.contigs + length.gaps*factor)
+
+scaling_factor
+```
+
+```{r}
+gaps <- gaps |>
+  left_join(scaling_factor |> select(chromosome, factor), by = c("chromosome")) |>
+  mutate(end = start + (end - start + 1)*factor) |>
+  select(-factor)
+```
 
 #### Insert gaps into contig order
 ```{r}
@@ -608,23 +670,16 @@ show_ideogram <- function(chrom) {
 
 ### Show chromosome sizes
 ```{r}
-karyotype |> 
-  left_join(synteny |> select(Species2, chromosome) , by = c(
-    "Chr" = "Species2"
-  )) |> 
-  distinct() |>
-  mutate(chromosome = if_else(is.na(chromosome), "Proto X [MV]", chromosome)) |>
+visual_factor <- 10^-6
+scaling_factor |> 
+  mutate(chromosome = if_else(chromosome == "ref", "Proto X [MV]", chromosome)) |>
   mutate(chromosome = if_else(chromosome == "X", "Proto X [MI]", chromosome)) |>
   mutate(chromosome = if_else(chromosome == "Y", "Proto Y [MI]", chromosome)) |>
-  mutate(gap = Chr |> trimws() |> nchar() != 0) |>
-  # Offset of + 1 because `Start is minimally 1
-  mutate(length.with_gaps = End - Start + 1) |>
-  mutate(length.only_contigs = length.with_gaps * gap) |>
-  group_by(chromosome) |>
   summarize(
-    length.mbs.with_gaps = sum(length.with_gaps) / 10^6,
-    length.mbs.only_contigs = sum(length.only_contigs) / 10^6) |>
-  distinct()
+    chromosome, 
+    `gap length [Mb]` = length.gaps * visual_factor,
+    `contig length [Mb]` = length.contigs * visual_factor,
+    `total length [Mb]` = length.total * visual_factor)
 ```
 
 
