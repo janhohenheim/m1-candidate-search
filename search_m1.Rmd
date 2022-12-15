@@ -682,5 +682,18 @@ scaling_factor |>
     `total length [Mb]` = length.total * visual_factor)
 ```
 
+### Show proto X [MV] gaps to blast
+```{r}
+gaps |>
+  left_join(scaling_factor, by = "chromosome") |>
+  select(start, end, factor, chromosome) |>
+  mutate(end = (end - start) / factor -1 + start)
+```
 
-
+### Show MI contigs that are candidates for BLAST targets
+```{r}
+read_csv("data/m1_contigs.csv") |>
+  filter(allocation == "2L") |>
+  filter(!(contig %in% karyotype$Chr)) |>
+  select(contig)
+```
