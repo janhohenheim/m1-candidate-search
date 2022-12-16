@@ -177,12 +177,13 @@ synteny.dmel_to_m1 |>
 contigs_of_interest <- c(
   'tig00003381', 
   'tig00003344',
-  'tig00009652', 
+  'tig00009652',
   'tig00009658',
   'tig00009706', 
   'tig00009705',
   'tig00009367', 
-  'tig00009311', 
+  'tig00009311',
+  'tig00003809', # Found via BLAST
   'tig00009710',
   'tig00009613',
   'tig00009708')
@@ -341,7 +342,8 @@ to_flip <- c(
   "tig00009708",
   # Y
   "tig00009652",
-  "tig00009710"
+  "tig00009710",
+  "tig00003809"
 )
 synteny <- synteny |>
   left_join(m1.alignment |> select(contig, length), by = c(
@@ -687,13 +689,48 @@ scaling_factor |>
 gaps |>
   left_join(scaling_factor, by = "chromosome") |>
   select(start, end, factor, chromosome) |>
-  mutate(end = (end - start) / factor -1 + start)
+  mutate(end = (end - start) / factor - 1 + start) |>
+  mutate(length = end - start) |>
+  select(-factor) |>
+  arrange(length |> desc())
 ```
 
 ### Show MI contigs that are candidates for BLAST targets
 ```{r}
 read_csv("data/m1_contigs.csv") |>
-  filter(allocation == "2L") |>
-  filter(!(contig %in% karyotype$Chr)) |>
-  select(contig)
+  filter(allocation %in% c("2L", "NALL")) |>
+  # The next line is commented out because the known contigs are a good comparison to the unknown BLAST results
+  # filter(!(contig %in% karyotype$Chr)) |> 
+  select(contig) |>
+  write_csv("output/blast/m1_contigs_filtered.csv")
+```
+
+### Read BLASTed data
+
+
+```{r}
+blast.raw <- read_csv("output/blast/blast_7_9m_to_8_9m_with_known_contigs_head.csv")
+``` 
+
+
+```{r}
+blast <- read_csv("output/blast/align_7_9m_to_8_9m_survey.csv") |>
+  mutate(length = end - start) |>
+  group_by(contig) |>
+  summarize(length = sum(length)) |>
+  distinct() |>
+  left_join(
+    read_csv("output/blast/align_7_9m_to_8_9m_query.csv") |>
+      mutate(length = end - start) |>
+      group_by(contig) |>
+      summarize(length = sum(length)) |>
+      distinct(),
+    by = c("contig"),
+    suffix = c(".survey", ".query"))
+```
+
+
+```{r}
+blast |> 
+  arrange(length.query |> desc())
 ```
